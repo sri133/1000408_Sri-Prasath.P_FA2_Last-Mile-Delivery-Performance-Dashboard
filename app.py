@@ -4,6 +4,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from scipy import stats as scipy_stats
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 DATA_FILE = "Last_mile_Delivery_Data.csv"
 
@@ -189,13 +194,24 @@ def _file_hash(path):
 
 
 @st.cache_data(show_spinner="Loading and cleaning delivery data...")
-def load_data(file_hash: str, path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
+def load_data(file_hash: str, path: str):
+    raw = pd.read_csv(path)
+    total_rows = len(raw)
 
+    df = raw.copy()
     text_cols = ["Weather", "Traffic", "Vehicle", "Area", "Category"]
     for col in text_cols:
         df[col] = df[col].astype(str).str.strip()
     df["Traffic"] = df["Traffic"].replace("NaN", pd.NA)
+
+    # --- capture cleaning stats BEFORE dropping, for the transparency panel ---
+    clean_stats = {
+        "total_rows": total_rows,
+        "missing_weather": int(df["Weather"].isna().sum()),
+        "missing_traffic": int(df["Traffic"].isna().sum()),
+        "missing_rating": int(df["Agent_Rating"].isna().sum()),
+        "missing_delivery_time": int(pd.to_numeric(df["Delivery_Time"], errors="coerce").isna().sum()),
+    }
 
     df = df.dropna(subset=["Weather", "Traffic", "Agent_Rating", "Delivery_Time"])
 
@@ -203,6 +219,9 @@ def load_data(file_hash: str, path: str) -> pd.DataFrame:
     df["Agent_Age"] = pd.to_numeric(df["Agent_Age"], errors="coerce")
     df["Agent_Rating"] = pd.to_numeric(df["Agent_Rating"], errors="coerce")
     df = df.dropna(subset=["Delivery_Time", "Agent_Age", "Agent_Rating"])
+
+    clean_stats["final_rows"] = len(df)
+    clean_stats["rows_dropped"] = total_rows - len(df)
 
     # Dates / times
     df["Order_Date"] = pd.to_datetime(df["Order_Date"], errors="coerce")
@@ -227,10 +246,32 @@ def load_data(file_hash: str, path: str) -> pd.DataFrame:
         labels=["<3.5", "3.5-4.0", "4.0-4.5", "4.5-5.0", "5.0+"]
     )
 
-    return df
+    return df, clean_stats
 
 
-df = load_data(_file_hash(DATA_FILE), DATA_FILE)
+df, clean_stats = load_data(_file_hash(DATA_FILE), DATA_FILE)
+
+
+@st.cache_resource(show_spinner="Training delay-risk model...")
+def train_delay_model(training_df: pd.DataFrame):
+    """Logistic regression predicting probability of a delayed delivery
+    from Weather, Traffic, Vehicle, Area and Category."""
+    features = ["Weather", "Traffic", "Vehicle", "Area", "Category"]
+    X = training_df[features]
+    y = training_df["Is_Delayed"].astype(int)
+
+    preprocessor = ColumnTransformer([
+        ("cat", OneHotEncoder(handle_unknown="ignore"), features)
+    ])
+    model = Pipeline([
+        ("prep", preprocessor),
+        ("clf", LogisticRegression(max_iter=1000)),
+    ])
+    model.fit(X, y)
+    return model
+
+
+delay_model = train_delay_model(df)
 
 # =========================================================
 # SIDEBAR FILTERS  (with a reset button that actually works)
@@ -291,6 +332,21 @@ if filtered.empty:
     st.warning("No data matches the current filter selection. Please broaden your filters.")
     st.stop()
 
+with st.expander("🧪 Data Cleaning Summary — click to see exactly what was cleaned"):
+    st.markdown(f"""
+- **Total rows loaded from CSV:** {clean_stats['total_rows']:,}
+- Rows with missing `Weather`: {clean_stats['missing_weather']}
+- Rows with missing/invalid `Traffic`: {clean_stats['missing_traffic']}
+- Rows with missing `Agent_Rating`: {clean_stats['missing_rating']}
+- Rows with missing `Delivery_Time`: {clean_stats['missing_delivery_time']}
+- **Rows dropped overall (union of the above):** {clean_stats['rows_dropped']} ({clean_stats['rows_dropped']/clean_stats['total_rows']*100:.2f}%)
+- **Final rows used in all analysis:** {clean_stats['final_rows']:,}
+
+All numeric columns (`Delivery_Time`, `Agent_Age`, `Agent_Rating`) were coerced to numeric type, text columns had
+whitespace stripped (the raw file has entries like `"Urban "`), and a literal `"NaN "` string bug in `Traffic`
+was corrected to a true missing value before dropping.
+    """)
+
 # =========================================================
 # KPI ROW  (all computed live from filtered data)
 # =========================================================
@@ -310,16 +366,42 @@ k5.metric("Statistical Outliers", f"{outlier_ct} (|z|>3)")
 # =========================================================
 # TABS
 # =========================================================
-tab_overview, tab_delay, tab_agents, tab_regional, tab_trends, tab_stats, tab_map = st.tabs(
+tab_overview, tab_delay, tab_agents, tab_regional, tab_trends, tab_stats, tab_map, tab_predict, tab_search = st.tabs(
     ["📊 Overview", "🌦️ Delay Analyzer", "🏍️ Vehicle & Agents",
      "🗺️ Regional & Category", "📈 Trends & Distribution",
-     "🧮 Statistics", "🌍 Live Map"]
+     "🧮 Statistics", "🌍 Live Map", "🔮 Insights & Predict", "🔎 Search & Compare"]
 )
 
 # ---------------------------------------------------------
 # TAB: OVERVIEW  (the 4 newly requested visuals)
 # ---------------------------------------------------------
 with tab_overview:
+    # ---- AUTO-GENERATED KEY INSIGHTS (computed live, not hardcoded) ----
+    section("🧠 KEY INSIGHTS", "Automatically generated from the current filtered data — recalculates every time you change a filter.")
+
+    w_avg = filtered.groupby("Weather")["Delivery_Time"].mean()
+    v_avg = filtered.groupby("Vehicle")["Delivery_Time"].mean()
+    a_delay = filtered.groupby("Area")["Is_Delayed"].mean()
+    c_delay = filtered.groupby("Category")["Is_Delayed"].mean()
+
+    worst_weather, best_weather = w_avg.idxmax(), w_avg.idxmin()
+    weather_pct_diff = (w_avg.max() - w_avg.min()) / w_avg.min() * 100
+
+    fastest_vehicle, slowest_vehicle = v_avg.idxmin(), v_avg.idxmax()
+    vehicle_pct_diff = (v_avg.max() - v_avg.min()) / v_avg.min() * 100
+
+    worst_area = a_delay.idxmax()
+    worst_category = c_delay.idxmax()
+
+    st.markdown(f"""
+- 🌩️ **{worst_weather}** weather sees deliveries take **{weather_pct_diff:.0f}% longer** on average than the fastest condition, **{best_weather}**.
+- 🏍️ **{fastest_vehicle}** is the fastest vehicle type; **{slowest_vehicle}** is **{vehicle_pct_diff:.0f}% slower** on average.
+- 📍 **{worst_area}** has the highest delay rate of any area ({a_delay.max()*100:.1f}% of deliveries delayed).
+- 📦 **{worst_category}** is the product category most likely to be delayed ({c_delay.max()*100:.1f}% delayed).
+    """)
+
+    st.divider()
+
     section("① MONTHLY TRENDS", "Average delivery time per month, with a 3-month moving average to smooth out noise (a rolling-mean calculation, not a static value).")
     monthly = filtered.dropna(subset=["Order_Month"]).groupby("Order_Month", as_index=False)["Delivery_Time"].mean().sort_values("Order_Month")
     monthly["Rolling_Avg"] = monthly["Delivery_Time"].rolling(window=3, min_periods=1).mean()
@@ -552,6 +634,119 @@ with tab_map:
         legend=dict(bgcolor="rgba(0,0,0,0.4)")
     )
     st.plotly_chart(fig_map, width='stretch')
+
+# ---------------------------------------------------------
+# TAB: INSIGHTS & PREDICT
+# ---------------------------------------------------------
+with tab_predict:
+    section("🔮 DELAY RISK PREDICTOR", "A logistic regression model trained on all cleaned deliveries predicts the probability of a delay for any combination of conditions you choose.")
+
+    pc1, pc2, pc3, pc4, pc5 = st.columns(5)
+    p_weather = pc1.selectbox("Weather", sorted(df["Weather"].unique()), key="pred_weather")
+    p_traffic = pc2.selectbox("Traffic", sorted(df["Traffic"].unique()), key="pred_traffic")
+    p_vehicle = pc3.selectbox("Vehicle", sorted(df["Vehicle"].unique()), key="pred_vehicle")
+    p_area = pc4.selectbox("Area", sorted(df["Area"].unique()), key="pred_area")
+    p_category = pc5.selectbox("Category", sorted(df["Category"].unique()), key="pred_category")
+
+    input_row = pd.DataFrame([{
+        "Weather": p_weather, "Traffic": p_traffic, "Vehicle": p_vehicle,
+        "Area": p_area, "Category": p_category
+    }])
+    predicted_prob = delay_model.predict_proba(input_row)[0][1] * 100
+
+    gauge_color = "#39ff88" if predicted_prob < 40 else ("#ffd93d" if predicted_prob < 65 else "#ff2bd6")
+    fig_gauge = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=predicted_prob,
+        number={"suffix": "%", "font": {"color": gauge_color}},
+        gauge={
+            "axis": {"range": [0, 100]},
+            "bar": {"color": gauge_color},
+            "bgcolor": "rgba(0,0,0,0)",
+            "borderwidth": 1,
+            "bordercolor": "rgba(255,255,255,0.2)",
+        },
+        title={"text": "Predicted Probability of Delay", "font": {"color": "#e8ecff", "size": 14}},
+    ))
+    st.plotly_chart(style_fig(fig_gauge), width='stretch')
+    st.caption("Model: Logistic Regression, one-hot encoded on Weather/Traffic/Vehicle/Area/Category, trained on the full cleaned dataset (not just current filters).")
+
+    st.divider()
+
+    section("📐 STATISTICAL SIGNIFICANCE TEST", "Compares two vehicle types with a Welch's t-test — is the speed difference real, or could it be random noise?")
+    veh_options = sorted(filtered["Vehicle"].unique())
+    tc1, tc2 = st.columns(2)
+    veh_a = tc1.selectbox("Vehicle A", veh_options, index=0, key="ttest_a")
+    veh_b = tc2.selectbox("Vehicle B", veh_options, index=min(1, len(veh_options) - 1), key="ttest_b")
+
+    if veh_a == veh_b:
+        st.info("Pick two different vehicle types to compare.")
+    else:
+        group_a = filtered[filtered["Vehicle"] == veh_a]["Delivery_Time"]
+        group_b = filtered[filtered["Vehicle"] == veh_b]["Delivery_Time"]
+        t_stat, p_value = scipy_stats.ttest_ind(group_a, group_b, equal_var=False)
+
+        diff = group_a.mean() - group_b.mean()
+        se_diff = np.sqrt(group_a.var() / len(group_a) + group_b.var() / len(group_b))
+        dof = min(len(group_a), len(group_b)) - 1
+        t_crit = scipy_stats.t.ppf(0.975, dof)
+        ci_low, ci_high = diff - t_crit * se_diff, diff + t_crit * se_diff
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric(f"{veh_a} avg", f"{group_a.mean():.1f} min")
+        m2.metric(f"{veh_b} avg", f"{group_b.mean():.1f} min")
+        m3.metric("Difference", f"{diff:+.1f} min")
+
+        verdict = "✅ Statistically significant (p < 0.05)" if p_value < 0.05 else "⚠️ Not statistically significant (p ≥ 0.05)"
+        st.markdown(f"""
+- **t-statistic:** {t_stat:.3f}
+- **p-value:** {p_value:.2e}
+- **95% confidence interval of the difference:** [{ci_low:.1f}, {ci_high:.1f}] minutes
+- **Conclusion:** {verdict} — {"the difference is unlikely due to random chance." if p_value < 0.05 else "the observed difference could plausibly be random noise."}
+        """)
+
+# ---------------------------------------------------------
+# TAB: SEARCH & COMPARE
+# ---------------------------------------------------------
+with tab_search:
+    section("🔎 SEARCH BY ORDER ID", "Look up a single delivery's full record.")
+    search_term = st.text_input("Enter full or partial Order ID", "")
+    if search_term:
+        matches = df[df["Order_ID"].str.contains(search_term, case=False, na=False)]
+        if matches.empty:
+            st.warning("No matching Order ID found.")
+        else:
+            st.dataframe(
+                matches[["Order_ID", "Weather", "Traffic", "Vehicle", "Area", "Category",
+                         "Agent_Age", "Agent_Rating", "Delivery_Time", "Is_Delayed"]].head(20),
+                width='stretch'
+            )
+
+    st.divider()
+
+    section("⚖️ COMPARE TWO GROUPS", "Pick any dimension and compare two values side by side across every key metric.")
+    dim = st.selectbox("Compare by", ["Area", "Vehicle", "Weather", "Category"], key="compare_dim")
+    options = sorted(df[dim].unique())
+    cc1, cc2 = st.columns(2)
+    val_a = cc1.selectbox(f"{dim} A", options, index=0, key="compare_a")
+    val_b = cc2.selectbox(f"{dim} B", options, index=min(1, len(options) - 1), key="compare_b")
+
+    if val_a == val_b:
+        st.info(f"Pick two different {dim} values to compare.")
+    else:
+        def group_summary(value):
+            g = df[df[dim] == value]
+            return {
+                "Deliveries": len(g),
+                "Avg Delivery Time": f"{g['Delivery_Time'].mean():.1f} min",
+                "Median Delivery Time": f"{g['Delivery_Time'].median():.1f} min",
+                "Std Dev": f"{g['Delivery_Time'].std():.1f} min",
+                "% Delayed": f"{g['Is_Delayed'].mean() * 100:.1f}%",
+                "Avg Agent Rating": f"{g['Agent_Rating'].mean():.2f}",
+            }
+
+        summary_df = pd.DataFrame({val_a: group_summary(val_a), val_b: group_summary(val_b)})
+        st.dataframe(summary_df, width='stretch')
 
 st.markdown("---")
 st.caption("Built with Streamlit • Live-computed from Last_mile_Delivery_Data.csv • LogiSight Analytics")
