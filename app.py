@@ -261,7 +261,7 @@ st.sidebar.multiselect("Traffic", FILTER_OPTIONS["traffic"], key="filter_traffic
 st.sidebar.multiselect("Vehicle Type", FILTER_OPTIONS["vehicle"], key="filter_vehicle")
 st.sidebar.multiselect("Area", FILTER_OPTIONS["area"], key="filter_area")
 st.sidebar.multiselect("Product Category", FILTER_OPTIONS["category"], key="filter_category")
-st.sidebar.button("🔄 Reset Filters", on_click=reset_filters, use_container_width=True)
+st.sidebar.button("🔄 Reset Filters", on_click=reset_filters, width='stretch')
 
 filtered = df[
     df["Weather"].isin(st.session_state["filter_weather"])
@@ -278,7 +278,7 @@ st.sidebar.download_button(
     data=filtered.to_csv(index=False).encode("utf-8"),
     file_name="filtered_delivery_data.csv",
     mime="text/csv",
-    use_container_width=True,
+    width='stretch',
 )
 
 # =========================================================
@@ -330,7 +330,7 @@ with tab_overview:
     fig_month.add_trace(go.Scatter(x=monthly["Order_Month"], y=monthly["Rolling_Avg"],
                                     mode="lines", name="3-Month Moving Avg",
                                     line=dict(color="#ff2bd6", width=2, dash="dash")))
-    st.plotly_chart(style_fig(fig_month, "Monthly Delivery Time Trend"), use_container_width=True)
+    st.plotly_chart(style_fig(fig_month, "Monthly Delivery Time Trend"), width='stretch')
 
     c1, c2 = st.columns(2)
     with c1:
@@ -349,7 +349,7 @@ with tab_overview:
                             annotation_text=f"μ={mean_dt:.0f}", annotation_font_color="#00f6ff")
         fig_hist.add_vline(x=median_dt, line_dash="dot", line_color="#ffd93d",
                             annotation_text=f"median={median_dt:.0f}", annotation_font_color="#ffd93d")
-        st.plotly_chart(style_fig(fig_hist, "Delivery Time Distribution"), use_container_width=True)
+        st.plotly_chart(style_fig(fig_hist, "Delivery Time Distribution"), width='stretch')
 
     with c2:
         section("③ % LATE DELIVERIES", "Percentage of deliveries above the mean delivery time, grouped by traffic and weather.")
@@ -369,14 +369,14 @@ with tab_overview:
         fig_late = px.bar(late_combo, x="pct", y="Condition", orientation="h",
                            color="pct", color_continuous_scale=["#39ff88", "#ffd93d", "#ff2bd6"],
                            labels={"pct": "% Delayed"})
-        st.plotly_chart(style_fig(fig_late, "% Late Deliveries by Condition"), use_container_width=True)
+        st.plotly_chart(style_fig(fig_late, "% Late Deliveries by Condition"), width='stretch')
 
     section("④ AGENT WORKLOAD PER AREA", "Delivery volume handled in each area — a proxy for agent workload since the dataset has no unique agent ID, only per-delivery age/rating.")
     area_ct = filtered.groupby("Area", as_index=False).size().rename(columns={"size": "Deliveries"})
     fig_area_donut = px.pie(area_ct, names="Area", values="Deliveries", hole=0.55,
                              color_discrete_sequence=NEON_SEQUENCE)
     fig_area_donut.update_traces(textinfo="percent+label", pull=[0.03] * len(area_ct))
-    st.plotly_chart(style_fig(fig_area_donut, "Delivery Volume Share by Area"), use_container_width=True)
+    st.plotly_chart(style_fig(fig_area_donut, "Delivery Volume Share by Area"), width='stretch')
 
 # ---------------------------------------------------------
 # TAB: DELAY ANALYZER
@@ -389,17 +389,17 @@ with tab_delay:
         fig = px.bar(w_stats, x="Weather", y="mean", error_y="std",
                      color="mean", color_continuous_scale="Plasma",
                      labels={"mean": "Avg Delivery Time (min)"})
-        st.plotly_chart(style_fig(fig, "Avg Delivery Time ± σ by Weather"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, "Avg Delivery Time ± σ by Weather"), width='stretch')
     with c2:
         fig = px.violin(filtered, x="Traffic", y="Delivery_Time", color="Traffic",
                          box=True, points=False, color_discrete_sequence=NEON_SEQUENCE)
-        st.plotly_chart(style_fig(fig, "Delivery Time Spread by Traffic (Violin Plot)"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, "Delivery Time Spread by Traffic (Violin Plot)"), width='stretch')
 
     section("WEATHER × TRAFFIC HEATMAP", "Average delivery time for every weather/traffic combination — reveals the true 'worst-case' pairing.")
     pivot = filtered.pivot_table(index="Weather", columns="Traffic", values="Delivery_Time", aggfunc="mean")
     fig_heat = px.imshow(pivot, text_auto=".0f", color_continuous_scale="Inferno",
                           labels=dict(color="Avg Min"))
-    st.plotly_chart(style_fig(fig_heat, "Avg Delivery Time: Weather × Traffic"), use_container_width=True)
+    st.plotly_chart(style_fig(fig_heat, "Avg Delivery Time: Weather × Traffic"), width='stretch')
 
 # ---------------------------------------------------------
 # TAB: VEHICLE & AGENTS
@@ -409,7 +409,7 @@ with tab_agents:
     veh_stats = filtered.groupby("Vehicle", as_index=False)["Delivery_Time"].mean().sort_values("Delivery_Time")
     fig = px.bar(veh_stats, x="Vehicle", y="Delivery_Time", color="Vehicle",
                  color_discrete_sequence=NEON_SEQUENCE)
-    st.plotly_chart(style_fig(fig, "Avg Delivery Time by Vehicle"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, "Avg Delivery Time by Vehicle"), width='stretch')
 
     c1, c2 = st.columns(2)
     with c1:
@@ -417,7 +417,7 @@ with tab_agents:
         rband = filtered.groupby("Rating_Band", observed=True, as_index=False)["Delivery_Time"].mean()
         fig = px.bar(rband, x="Rating_Band", y="Delivery_Time", color="Delivery_Time",
                      color_continuous_scale="Turbo")
-        st.plotly_chart(style_fig(fig, "Avg Delivery Time by Rating Band"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, "Avg Delivery Time by Rating Band"), width='stretch')
     with c2:
         section("AGE vs DELIVERY TIME + TREND LINE", "Linear regression fit (least-squares) shows whether age predicts delivery speed.")
         x = filtered["Agent_Age"].values
@@ -435,7 +435,7 @@ with tab_agents:
                                                 colorbar=dict(title="Rating"))))
         fig.add_trace(go.Scatter(x=x_line, y=y_line, mode="lines", name="Trend Line",
                                   line=dict(color="#ff2bd6", width=3)))
-        st.plotly_chart(style_fig(fig, f"Age vs Delivery Time  (R²={r_squared:.3f}, slope={slope:.2f})"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, f"Age vs Delivery Time  (R²={r_squared:.3f}, slope={slope:.2f})"), width='stretch')
         st.caption(f"Regression equation: Delivery_Time ≈ {slope:.2f} × Age + {intercept:.1f}  |  Pearson r = {corr:.3f}")
 
 # ---------------------------------------------------------
@@ -451,13 +451,13 @@ with tab_regional:
     fig = px.bar(area_stats, x="Area", y="Avg_Delivery_Time", color="Delay_Pct",
                  color_continuous_scale="Sunsetdark", labels={"Delay_Pct": "% Delayed"},
                  hover_data=["Orders"])
-    st.plotly_chart(style_fig(fig, "Avg Delivery Time & Delay % by Area"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, "Avg Delivery Time & Delay % by Area"), width='stretch')
 
     section("CATEGORY VISUALIZER", "Which product categories face repeat delays, broken down by area (treemap).")
     cat_area = filtered.groupby(["Area", "Category"], as_index=False)["Delivery_Time"].mean()
     fig = px.treemap(cat_area, path=["Area", "Category"], values="Delivery_Time",
                       color="Delivery_Time", color_continuous_scale="Magma")
-    st.plotly_chart(style_fig(fig, "Avg Delivery Time by Area → Category"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, "Avg Delivery Time by Area → Category"), width='stretch')
 
 # ---------------------------------------------------------
 # TAB: TRENDS & DISTRIBUTION (extra depth)
@@ -469,14 +469,14 @@ with tab_trends:
     fig = px.area(hour_stats, x="Order_Hour", y="pct", markers=True,
                    color_discrete_sequence=["#00f6ff"])
     fig.update_traces(line_color="#00f6ff", fillcolor="rgba(0,246,255,0.15)")
-    st.plotly_chart(style_fig(fig, "% Delayed by Order Hour"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, "% Delayed by Order Hour"), width='stretch')
 
     section("PICKUP LAG vs TRAVEL TIME", "How much of total delivery time is pickup lag versus the actual trip.")
     lag_df = filtered.dropna(subset=["Pickup_Lag_Min"])
     lag_df = lag_df[(lag_df["Pickup_Lag_Min"] >= 0) & (lag_df["Pickup_Lag_Min"] < 120)]
     fig = px.scatter(lag_df, x="Pickup_Lag_Min", y="Delivery_Time", color="Vehicle",
                       opacity=0.5, color_discrete_sequence=NEON_SEQUENCE)
-    st.plotly_chart(style_fig(fig, "Pickup Lag vs Total Delivery Time"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, "Pickup Lag vs Total Delivery Time"), width='stretch')
 
 # ---------------------------------------------------------
 # TAB: STATISTICS  (course = Mathematics for AI → show the math)
@@ -487,18 +487,18 @@ with tab_stats:
     desc.loc["variance"] = filtered["Delivery_Time"].var()
     desc.loc["skewness"] = filtered["Delivery_Time"].skew()
     desc.loc["kurtosis"] = filtered["Delivery_Time"].kurt()
-    st.dataframe(desc.style.format("{:.2f}"), use_container_width=True)
+    st.dataframe(desc.style.format("{:.2f}"), width='stretch')
 
     section("CORRELATION MATRIX", "Pearson correlation coefficients between numeric variables — shows which factors move together.")
     corr_matrix = filtered[["Agent_Age", "Agent_Rating", "Delivery_Time", "Pickup_Lag_Min"]].corr()
     fig = px.imshow(corr_matrix, text_auto=".2f", color_continuous_scale="RdBu_r", zmin=-1, zmax=1)
-    st.plotly_chart(style_fig(fig, "Correlation Heatmap"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, "Correlation Heatmap"), width='stretch')
 
     section("OUTLIER DETECTION (Z-SCORE)", "Deliveries flagged as statistical outliers when |z-score| > 3, i.e. more than 3 standard deviations from the mean.")
     st.dataframe(
         filtered[filtered["Is_Outlier"]][["Order_ID", "Area", "Vehicle", "Weather", "Traffic", "Delivery_Time", "Z_Score"]]
         .sort_values("Z_Score", ascending=False).head(20),
-        use_container_width=True
+        width='stretch'
     )
 
 # ---------------------------------------------------------
@@ -508,23 +508,36 @@ with tab_map:
     section("DELIVERY ROUTE MAP", "Store pickup points vs drop-off points for a sample of filtered deliveries.")
     sample = filtered.sample(min(1500, len(filtered)), random_state=42)
     fig_map = go.Figure()
-    fig_map.add_trace(go.Scattermapbox(
+
+    # Newer Plotly versions (7.x) replaced the Mapbox-based "Scattermapbox"
+    # trace with the MapLibre-based "Scattermap" trace. This still works on
+    # older Plotly versions too (added in 5.24+), so it's the safe choice.
+    if hasattr(go, "Scattermap"):
+        ScatterMapTrace = go.Scattermap
+        map_layout_key = "map"
+    else:
+        ScatterMapTrace = go.Scattermapbox
+        map_layout_key = "mapbox"
+
+    fig_map.add_trace(ScatterMapTrace(
         lat=sample["Store_Latitude"], lon=sample["Store_Longitude"],
         mode="markers", marker=dict(size=6, color="#00f6ff"), name="Store"
     ))
-    fig_map.add_trace(go.Scattermapbox(
+    fig_map.add_trace(ScatterMapTrace(
         lat=sample["Drop_Latitude"], lon=sample["Drop_Longitude"],
         mode="markers", marker=dict(size=6, color="#ff2bd6"), name="Drop-off"
     ))
     fig_map.update_layout(
-        mapbox=dict(style="carto-darkmatter",
-                    center=dict(lat=sample["Store_Latitude"].mean(), lon=sample["Store_Longitude"].mean()),
-                    zoom=3.2),
+        **{map_layout_key: dict(
+            style="carto-darkmatter",
+            center=dict(lat=sample["Store_Latitude"].mean(), lon=sample["Store_Longitude"].mean()),
+            zoom=3.2,
+        )},
         paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(t=10, l=0, r=0, b=0),
         legend=dict(bgcolor="rgba(0,0,0,0.4)")
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.plotly_chart(fig_map, width='stretch')
 
 st.markdown("---")
 st.caption("Built with Streamlit • Live-computed from Last_mile_Delivery_Data.csv • LogiSight Analytics")
