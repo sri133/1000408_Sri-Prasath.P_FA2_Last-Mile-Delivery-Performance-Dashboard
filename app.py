@@ -495,11 +495,25 @@ with tab_stats:
     st.plotly_chart(style_fig(fig, "Correlation Heatmap"), width='stretch')
 
     section("OUTLIER DETECTION (Z-SCORE)", "Deliveries flagged as statistical outliers when |z-score| > 3, i.e. more than 3 standard deviations from the mean.")
-    st.dataframe(
-        filtered[filtered["Is_Outlier"]][["Order_ID", "Area", "Vehicle", "Weather", "Traffic", "Delivery_Time", "Z_Score"]]
-        .sort_values("Z_Score", ascending=False).head(20),
-        width='stretch'
-    )
+    outliers_df = filtered[filtered["Is_Outlier"]][
+        ["Order_ID", "Area", "Vehicle", "Weather", "Traffic", "Delivery_Time", "Z_Score"]
+    ].sort_values("Z_Score", ascending=False)
+
+    if outliers_df.empty:
+        max_abs_z = filtered["Z_Score"].abs().max()
+        st.success(
+            f"No statistical outliers found — every delivery in the current selection falls within "
+            f"±3 standard deviations of the mean (largest observed |z-score| = {max_abs_z:.2f}). "
+            f"This means delivery times are consistently distributed with no extreme spikes."
+        )
+        st.caption("Showing the 10 most extreme deliveries anyway, for reference:")
+        st.dataframe(
+            filtered[["Order_ID", "Area", "Vehicle", "Weather", "Traffic", "Delivery_Time", "Z_Score"]]
+            .reindex(filtered["Z_Score"].abs().sort_values(ascending=False).index).head(10),
+            width='stretch'
+        )
+    else:
+        st.dataframe(outliers_df.head(20), width='stretch')
 
 # ---------------------------------------------------------
 # TAB: LIVE MAP
