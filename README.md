@@ -9,8 +9,8 @@ An interactive Streamlit dashboard that helps logistics managers understand *whe
 |---|---|
 | 🔗 **Live App** | [Open the deployed dashboard](https://1000408sri-prasathpfa2last-mile-delivery-performance-dashboard.streamlit.app/) |
 | 🎨 **FA-1 Storyboard & Data Flow (Canva)** | [View the Canva presentation](https://www.canva.com/design/DAHS6PMDg2A/exVKIxkesrh9zYe7H6nHWA/view?utm_content=DAHS6PMDg2A&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hafb418c757) |
-| 👤 **Author** | Sri Prasath *(add your full name / student ID here)* |
-
+| 👤 **Author** | Sri Prasath.P |
+| **Student ID** | 1000408|
 ---
 
 ## 📌 Table of Contents
